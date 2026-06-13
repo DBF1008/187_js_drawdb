@@ -8,6 +8,7 @@ import {
   useContext,
 } from "react";
 import ControlPanel from "./EditorHeader/ControlPanel";
+import GlobalSearch from "./GlobalSearch/GlobalSearch";
 import ExtensionsContext, { Slot } from "../context/ExtensionsContext";
 import Canvas from "./EditorCanvas/Canvas";
 import { CanvasContextProvider } from "../context/CanvasContext";
@@ -39,6 +40,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { get, SHARE_FILENAME } from "../api/gists";
+import { useHotkeys } from "react-hotkeys-hook";
 import { nanoid } from "nanoid";
 import { mergeCustomTypes } from "../utils/customTypes";
 
@@ -63,6 +65,7 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
   const [showSelectDbModal, setShowSelectDbModal] = useState(false);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedDb, setSelectedDb] = useState("");
+  const [globalSearchVisible, setGlobalSearchVisible] = useState(false);
   const pendingNewIdRef = useRef(null);
   const { layout, setLayout } = useLayout();
   const { settings } = useSettings();
@@ -534,6 +537,12 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
     load();
   }, [load]);
 
+  useHotkeys(
+    "mod+k",
+    () => setGlobalSearchVisible((prev) => !prev),
+    { preventDefault: true },
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden theme">
       <IdContext.Provider value={{ gistId, setGistId, version, setVersion }}>
@@ -596,6 +605,10 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
         </div>
         <Slot name="right-panel" />
       </div>
+      <GlobalSearch
+        visible={globalSearchVisible}
+        onClose={() => setGlobalSearchVisible(false)}
+      />
       <Modal
         centered
         size="medium"

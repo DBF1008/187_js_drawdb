@@ -300,6 +300,13 @@ const en = {
     force_hide: "Force hide",
     primary_key: "Primary key",
     foreign_key: "Foreign key",
+    global_search: "Search tables, fields, relationships, notes...",
+    global_search_hint: "Start typing to search across all entities",
+    field: "Field",
+    navigate: "Navigate",
+    select: "Select",
+    esc: "Esc",
+    locate_on_canvas: "Locate on canvas",
   },
 };
 
