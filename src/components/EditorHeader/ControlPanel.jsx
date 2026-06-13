@@ -1562,6 +1562,9 @@ export default function ControlPanel({
       export_saved_data: {
         function: exportSavedData,
       },
+      restore_backup: {
+        function: () => setModal(MODAL.RESTORE_BACKUP),
+      },
       clear_cache: {
         function: () => {
           deleteFromCache(gistId);

@@ -25,6 +25,8 @@ export const getModalTitle = (modal) => {
       return i18n.t("language");
     case MODAL.SHARE:
       return i18n.t("share");
+    case MODAL.RESTORE_BACKUP:
+      return i18n.t("restore_backup");
     default:
       return "";
   }
@@ -36,6 +38,7 @@ export const getModalWidth = (modal) => {
     case MODAL.OPEN:
     case MODAL.CODE:
     case MODAL.NEW:
+    case MODAL.RESTORE_BACKUP:
       return 740;
     default:
       return 600;

@@ -33,6 +33,7 @@ import Open from "./Open";
 import Rename from "./Rename";
 import SetTableWidth from "./SetTableWidth";
 import Share from "./Share";
+import RestoreBackup from "./RestoreBackup";
 import { mergeCustomTypes } from "../../../utils/customTypes";
 
 const extensionToLanguage = {
@@ -218,6 +219,9 @@ export default function Modal({
         setSettings((prev) => ({ ...prev, tableWidth: tempTableWidth }));
         setModal(MODAL.NONE);
         return;
+      case MODAL.RESTORE_BACKUP:
+        setModal(MODAL.NONE);
+        return;
       default:
         setModal(MODAL.NONE);
         return;
@@ -321,6 +325,8 @@ export default function Modal({
         );
       case MODAL.SHARE:
         return <Share title={title} setModal={setModal} />;
+      case MODAL.RESTORE_BACKUP:
+        return <RestoreBackup setModal={setModal} />;
       default:
         return <></>;
     }
@@ -366,7 +372,7 @@ export default function Modal({
           ((modal === MODAL.IMG || modal === MODAL.CODE) && !exportData.data) ||
           (modal === MODAL.SAVEAS && saveAsTitle === "") ||
           (modal === MODAL.IMPORT_SRC && importSource.src === ""),
-        hidden: modal === MODAL.SHARE,
+        hidden: modal === MODAL.SHARE || modal === MODAL.RESTORE_BACKUP,
       }}
       hasCancel={modal !== MODAL.SHARE}
       cancelText={t("cancel")}
