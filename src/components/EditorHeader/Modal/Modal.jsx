@@ -4,8 +4,7 @@ import { Parser } from "node-sql-parser";
 import { Parser as OracleParser } from "oracle-sql-parser";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { DB, MODAL, STATUS } from "../../../data/constants";
-import { databases } from "../../../data/databases";
+import { DB, IMPORT_FROM, MODAL, STATUS } from "../../../data/constants";
 import {
   useAreas,
   useDiagram,
@@ -20,12 +19,18 @@ import {
 import { isRtl } from "../../../i18n/utils/rtl";
 import { importSQL } from "../../../utils/importSQL";
 import {
+  normalizeImportData,
+  buildComparison,
+  applyImportSelection,
+} from "../../../utils/importPreview";
+import {
   getModalTitle,
   getModalWidth,
   getOkText,
 } from "../../../utils/modalData";
 import CodeEditor from "../../CodeEditor";
 import ImportDiagram from "./ImportDiagram";
+import ImportPreview from "./ImportPreview/ImportPreview";
 import ImportSource from "./ImportSource";
 import Language from "./Language";
 import New from "./New";
@@ -53,11 +58,12 @@ export default function Modal({
   importFrom,
 }) {
   const { t, i18n } = useTranslation();
-  const { setTables, setRelationships, database } = useDiagram();
-  const { setNotes } = useNotes();
-  const { setAreas } = useAreas();
-  const { setTypes } = useTypes();
-  const { setEnums } = useEnums();
+  const { tables, relationships, setTables, setRelationships, database } =
+    useDiagram();
+  const { notes, setNotes } = useNotes();
+  const { areas, setAreas } = useAreas();
+  const { types, setTypes } = useTypes();
+  const { enums, setEnums } = useEnums();
   const { setTransform } = useTransform();
   const { setUndoStack, setRedoStack } = useUndoRedo();
   const { settings, setSettings } = useSettings();
@@ -71,6 +77,8 @@ export default function Modal({
     overwrite: false,
   });
   const [importData, setImportData] = useState(null);
+  const [comparison, setComparison] = useState(null);
+  const [previewSource, setPreviewSource] = useState(null);
   const [error, setError] = useState({
     type: STATUS.NONE,
     message: "",
@@ -80,37 +88,25 @@ export default function Modal({
   const [saveAsTitle, setSaveAsTitle] = useState(title);
   const navigate = useNavigateWithParams();
 
-  const overwriteDiagram = () => {
-    setTables(importData.tables);
-    setRelationships(importData.relationships);
-    setAreas(importData.subjectAreas ?? []);
-    setNotes(importData.notes ?? []);
-    if (importData.title) {
-      setTitle(importData.title);
-    }
-    if (databases[database].hasEnums && importData.enums) {
-      setEnums(importData.enums);
-    }
-    if (databases[database].hasTypes && importData.types) {
-      setTypes(importData.types);
-    }
-    if (importData.customTypes) {
-      mergeCustomTypes(importData.customTypes);
-    }
+  const transitionToPreview = (rawData, source) => {
+    const normalized = normalizeImportData(rawData);
+    const currentState = { tables, relationships, types, enums, areas, notes };
+    const comp = buildComparison(normalized, currentState);
+    setComparison(comp);
+    setPreviewSource(source);
+    setModal(MODAL.IMPORT_PREVIEW);
   };
 
-  const parseSQLAndLoadDiagram = () => {
+  const parseSQLToData = () => {
     const targetDatabase = database === DB.GENERIC ? importDb : database;
 
     let ast = null;
     try {
       if (targetDatabase === DB.ORACLESQL) {
         const oracleParser = new OracleParser();
-
         ast = oracleParser.parse(importSource.src);
       } else {
         const parser = new Parser();
-
         ast = parser.astify(importSource.src, {
           database: targetDatabase,
         });
@@ -121,47 +117,21 @@ export default function Modal({
         : error.message;
 
       setError({ type: STATUS.ERROR, message });
-      return;
+      return null;
     }
 
     try {
-      const diagramData = importSQL(
+      return importSQL(
         ast,
         database === DB.GENERIC ? importDb : database,
         database,
       );
-
-      if (importSource.overwrite) {
-        setTables(diagramData.tables);
-        setRelationships(diagramData.relationships);
-        if (databases[database].hasTypes) setTypes(diagramData.types ?? []);
-        if (databases[database].hasEnums) setEnums(diagramData.enums ?? []);
-        setTransform((prev) => ({ ...prev, pan: { x: 0, y: 0 } }));
-        setNotes([]);
-        setAreas([]);
-      } else {
-        setTables((prev) => [...prev, ...diagramData.tables]);
-        setRelationships((prev) =>
-          [...prev, ...diagramData.relationships].map((r, i) => ({
-            ...r,
-            id: i,
-          })),
-        );
-        if (databases[database].hasTypes && diagramData.types.length)
-          setTypes((prev) => [...prev, ...diagramData.types]);
-        if (databases[database].hasEnums && diagramData.enums.length)
-          setEnums((prev) => [...prev, ...diagramData.enums]);
-      }
-
-      setUndoStack([]);
-      setRedoStack([]);
-
-      setModal(MODAL.NONE);
     } catch (e) {
       setError({
         type: STATUS.ERROR,
         message: `Please check for syntax errors or let us know about the error.`,
       });
+      return null;
     }
   };
 
@@ -181,17 +151,48 @@ export default function Modal({
         return;
       }
       case MODAL.IMPORT:
-        if (error.type !== STATUS.ERROR) {
-          setTransform((prev) => ({ ...prev, pan: { x: 0, y: 0 } }));
-          overwriteDiagram();
-          setImportData(null);
-          setModal(MODAL.NONE);
-          setUndoStack([]);
-          setRedoStack([]);
+        if (error.type !== STATUS.ERROR && importData) {
+          const source =
+            importFrom === IMPORT_FROM.JSON ? "json" : "dbml";
+          // Handle custom types separately (always merge additively)
+          if (importData.customTypes) {
+            mergeCustomTypes(importData.customTypes);
+          }
+          transitionToPreview(importData, source);
         }
         return;
-      case MODAL.IMPORT_SRC:
-        parseSQLAndLoadDiagram();
+      case MODAL.IMPORT_SRC: {
+        const diagramData = parseSQLToData();
+        if (diagramData) {
+          transitionToPreview(diagramData, "sql");
+        }
+        return;
+      }
+      case MODAL.IMPORT_PREVIEW:
+        if (comparison) {
+          const currentState = {
+            tables,
+            relationships,
+            types,
+            enums,
+            areas,
+            notes,
+          };
+          applyImportSelection(comparison, currentState, {
+            setTables,
+            setRelationships,
+            setTypes,
+            setEnums,
+            setAreas,
+            setNotes,
+            setTransform,
+            setUndoStack,
+            setRedoStack,
+          });
+          setComparison(null);
+          setPreviewSource(null);
+          setModal(MODAL.NONE);
+        }
         return;
       case MODAL.OPEN:
         if (!selectedDiagramId) return;
@@ -238,12 +239,19 @@ export default function Modal({
       case MODAL.IMPORT_SRC:
         return (
           <ImportSource
-            importData={importSource}
             setImportData={setImportSource}
             error={error}
             setError={setError}
           />
         );
+      case MODAL.IMPORT_PREVIEW:
+        return comparison ? (
+          <ImportPreview
+            comparison={comparison}
+            setComparison={setComparison}
+            source={previewSource}
+          />
+        ) : null;
       case MODAL.NEW:
         return (
           <New
@@ -347,11 +355,17 @@ export default function Modal({
           src: "",
           overwrite: false,
         });
+        setComparison(null);
+        setPreviewSource(null);
       }}
       onCancel={() => {
         if (modal === MODAL.RENAME) setUncontrolledTitle(title);
         if (modal === MODAL.LANGUAGE) setUncontrolledLanguage(i18n.language);
         if (modal === MODAL.TABLE_WIDTH) setTempTableWidth(settings.tableWidth);
+        if (modal === MODAL.IMPORT_PREVIEW) {
+          setComparison(null);
+          setPreviewSource(null);
+        }
         setModal(MODAL.NONE);
       }}
       centered
@@ -365,7 +379,12 @@ export default function Modal({
           (modal === MODAL.RENAME && title === "") ||
           ((modal === MODAL.IMG || modal === MODAL.CODE) && !exportData.data) ||
           (modal === MODAL.SAVEAS && saveAsTitle === "") ||
-          (modal === MODAL.IMPORT_SRC && importSource.src === ""),
+          (modal === MODAL.IMPORT_SRC && importSource.src === "") ||
+          (modal === MODAL.IMPORT_PREVIEW &&
+            (!comparison ||
+              !Object.values(comparison).some((items) =>
+                items.some((item) => item.selected),
+              ))),
         hidden: modal === MODAL.SHARE,
       }}
       hasCancel={modal !== MODAL.SHARE}

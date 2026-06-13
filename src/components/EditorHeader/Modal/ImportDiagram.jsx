@@ -4,13 +4,7 @@ import {
 } from "../../../utils/validateSchema";
 import { Upload, Banner } from "@douyinfe/semi-ui";
 import { DB, IMPORT_FROM, STATUS } from "../../../data/constants";
-import {
-  useAreas,
-  useEnums,
-  useNotes,
-  useDiagram,
-  useTypes,
-} from "../../../hooks";
+import { useDiagram } from "../../../hooks";
 import { useTranslation } from "react-i18next";
 import { fromDBML } from "../../../utils/importFrom/dbml";
 
@@ -20,23 +14,8 @@ export default function ImportDiagram({
   setError,
   importFrom,
 }) {
-  const { areas } = useAreas();
-  const { notes } = useNotes();
-  const { tables, relationships, database } = useDiagram();
-  const { types } = useTypes();
-  const { enums } = useEnums();
+  const { database } = useDiagram();
   const { t } = useTranslation();
-
-  const diagramIsEmpty = () => {
-    return (
-      tables.length === 0 &&
-      relationships.length === 0 &&
-      notes.length === 0 &&
-      areas.length === 0 &&
-      types.length === 0 &&
-      enums.length === 0
-    );
-  };
 
   const loadJsonData = (file, e) => {
     let jsonObject = null;
@@ -113,18 +92,10 @@ export default function ImportDiagram({
     if (!ok) return;
 
     setImportData(jsonObject);
-    if (diagramIsEmpty()) {
-      setError({
-        type: STATUS.OK,
-        message: "Everything looks good. You can now import.",
-      });
-    } else {
-      setError({
-        type: STATUS.WARNING,
-        message:
-          "The current diagram is not empty. Importing a new diagram will overwrite the current changes.",
-      });
-    }
+    setError({
+      type: STATUS.OK,
+      message: "Everything looks good. You can now import.",
+    });
   };
 
   const loadDBMLData = (e) => {

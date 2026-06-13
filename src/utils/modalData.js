@@ -7,6 +7,8 @@ export const getModalTitle = (modal) => {
       return i18n.t("import_diagram");
     case MODAL.IMPORT_SRC:
       return i18n.t("import_from_source");
+    case MODAL.IMPORT_PREVIEW:
+      return i18n.t("import_preview");
     case MODAL.CODE:
       return i18n.t("export");
     case MODAL.IMG:
@@ -36,6 +38,7 @@ export const getModalWidth = (modal) => {
     case MODAL.OPEN:
     case MODAL.CODE:
     case MODAL.NEW:
+    case MODAL.IMPORT_PREVIEW:
       return 740;
     default:
       return 600;
@@ -47,6 +50,8 @@ export const getOkText = (modal) => {
     case MODAL.IMPORT:
     case MODAL.IMPORT_SRC:
       return i18n.t("import");
+    case MODAL.IMPORT_PREVIEW:
+      return i18n.t("import_selected");
     case MODAL.CODE:
     case MODAL.IMG:
       return i18n.t("export");

@@ -1,10 +1,9 @@
-import { Upload, Checkbox, Banner, Tabs, TabPane } from "@douyinfe/semi-ui";
+import { Upload, Banner, Tabs, TabPane } from "@douyinfe/semi-ui";
 import { STATUS } from "../../../data/constants";
 import { useTranslation } from "react-i18next";
 import CodeEditor from "../../CodeEditor";
 
 export default function ImportSource({
-  importData,
   setImportData,
   error,
   setError,
@@ -71,41 +70,27 @@ export default function ImportSource({
       </Tabs>
 
       <div className="mt-2">
-        <Checkbox
-          aria-label="overwrite checkbox"
-          checked={importData.overwrite}
-          onChange={(e) =>
-            setImportData((prev) => ({
-              ...prev,
-              overwrite: e.target.checked,
-            }))
-          }
-        >
-          {t("overwrite_existing_diagram")}
-        </Checkbox>
-        <div className="mt-2">
-          {error.type === STATUS.ERROR ? (
+        {error.type === STATUS.ERROR ? (
+          <Banner
+            type="danger"
+            fullMode={false}
+            description={<div>{error.message}</div>}
+          />
+        ) : error.type === STATUS.OK ? (
+          <Banner
+            type="info"
+            fullMode={false}
+            description={<div>{error.message}</div>}
+          />
+        ) : (
+          error.type === STATUS.WARNING && (
             <Banner
-              type="danger"
+              type="warning"
               fullMode={false}
               description={<div>{error.message}</div>}
             />
-          ) : error.type === STATUS.OK ? (
-            <Banner
-              type="info"
-              fullMode={false}
-              description={<div>{error.message}</div>}
-            />
-          ) : (
-            error.type === STATUS.WARNING && (
-              <Banner
-                type="warning"
-                fullMode={false}
-                description={<div>{error.message}</div>}
-              />
-            )
-          )}
-        </div>
+          )
+        )}
       </div>
     </div>
   );
