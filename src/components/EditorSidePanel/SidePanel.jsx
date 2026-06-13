@@ -14,6 +14,8 @@ import {
   useSettings,
 } from "../../hooks";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import { queryConfig } from "../../utils/queryConfig";
 import RelationshipsTab from "./RelationshipsTab/RelationshipsTab";
 import TypesTab from "./TypesTab/TypesTab";
 import Issues from "./Issues";
@@ -29,6 +31,9 @@ import DBMLEditor from "./DBMLEditor";
 export default function SidePanel({ width, resize, setResize }) {
   const { layout, setLayout } = useLayout();
   const { settings } = useSettings();
+  const [searchParams] = useSearchParams();
+  const dbmlParam = searchParams.get(queryConfig.dbml.key);
+  const dbmlForced = queryConfig.dbml.isForced(dbmlParam);
   const { selectedElement, setSelectedElement } = useSelect();
   const { database, tablesCount, relationshipsCount } = useDiagram();
   const { areasCount } = useAreas();
@@ -148,7 +153,9 @@ export default function SidePanel({ width, resize, setResize }) {
                   ? "segmented-item-active font-medium shadow-sm"
                   : "opacity-60 hover:opacity-100"
               }`}
-              onClick={() => setDbmlEditor(false)}
+              onClick={() => {
+                if (!dbmlForced) setDbmlEditor(false);
+              }}
             >
               <IconList size="small" />
               {t("structure")}

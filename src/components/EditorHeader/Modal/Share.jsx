@@ -38,6 +38,9 @@ export default function Share({ title, setModal }) {
     hideHeader: null,
     hideSidebar: null,
     hideToolbar: null,
+    hideIssues: null,
+    readonly: null,
+    dbml: null,
   });
 
   const url = useMemo(() => {
@@ -196,6 +199,21 @@ export default function Share({ title, setModal }) {
                       {embedSettings.hideToolbar && (
                         <Tag color="blue" size="small">
                           {t("toolbar")}
+                        </Tag>
+                      )}
+                      {embedSettings.hideIssues && (
+                        <Tag color="blue" size="small">
+                          {t("issues")}
+                        </Tag>
+                      )}
+                      {embedSettings.readonly && (
+                        <Tag color="blue" size="small">
+                          {t("read_only")}
+                        </Tag>
+                      )}
+                      {embedSettings.dbml && (
+                        <Tag color="blue" size="small">
+                          {t("dbml_view")}
                         </Tag>
                       )}
                     </Space>

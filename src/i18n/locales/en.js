@@ -298,6 +298,8 @@ const en = {
     default: "Default",
     hide: "Hide",
     force_hide: "Force hide",
+    on: "On",
+    force_on: "Force on",
     primary_key: "Primary key",
     foreign_key: "Foreign key",
   },

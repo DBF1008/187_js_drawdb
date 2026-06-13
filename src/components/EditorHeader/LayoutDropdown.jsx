@@ -9,11 +9,17 @@ import { enterFullscreen, exitFullscreen } from "../../utils/fullscreen";
 import { useTranslation } from "react-i18next";
 import { isRtl } from "../../i18n/utils/rtl";
 import i18n from "../../i18n/i18n";
+import { useSearchParams } from "react-router-dom";
+import { queryConfig } from "../../utils/queryConfig";
 
 export default function LayoutDropdown() {
   const fullscreen = useFullscreen();
   const { layout, setLayout } = useLayout();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+
+  const hideIssuesParam = searchParams.get(queryConfig.hideIssues.key);
+  const issuesForced = queryConfig.hideIssues.isForced(hideIssuesParam);
 
   const invertLayout = (component) =>
     setLayout((prev) => ({ ...prev, [component]: !prev[component] }));
@@ -47,7 +53,10 @@ export default function LayoutDropdown() {
             icon={
               layout.issues ? <IconCheckboxTick /> : <div className="px-2" />
             }
-            onClick={() => invertLayout("issues")}
+            onClick={() => {
+              if (!issuesForced) invertLayout("issues");
+            }}
+            disabled={issuesForced}
           >
             {t("issues")}
           </Dropdown.Item>

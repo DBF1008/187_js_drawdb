@@ -2,11 +2,19 @@ import { Divider, Tooltip } from "@douyinfe/semi-ui";
 import { useTransform, useLayout } from "../hooks";
 import { exitFullscreen } from "../utils/fullscreen";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+import { queryConfig } from "../utils/queryConfig";
 
 export default function FloatingControls() {
   const { transform, setTransform } = useTransform();
   const { setLayout } = useLayout();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+
+  const isForced = (configKey) =>
+    queryConfig[configKey].isForced(
+      searchParams.get(queryConfig[configKey].key),
+    );
 
   return (
     <div className="flex gap-2">
@@ -43,9 +51,10 @@ export default function FloatingControls() {
           onClick={() => {
             setLayout((prev) => ({
               ...prev,
-              sidebar: true,
-              toolbar: true,
-              header: true,
+              header: isForced("hideHeader") ? prev.header : true,
+              sidebar: isForced("hideSidebar") ? prev.sidebar : true,
+              toolbar: isForced("hideToolbar") ? prev.toolbar : true,
+              issues: isForced("hideIssues") ? prev.issues : true,
             }));
             exitFullscreen();
           }}

@@ -19,6 +19,9 @@ export default function LayoutContextProvider({ children }) {
   const hideHeaderParam = searchParams.get(queryConfig.hideHeader.key);
   const hideSidebarParam = searchParams.get(queryConfig.hideSidebar.key);
   const hideToolbarParam = searchParams.get(queryConfig.hideToolbar.key);
+  const hideIssuesParam = searchParams.get(queryConfig.hideIssues.key);
+  const readonlyParam = searchParams.get(queryConfig.readonly.key);
+  const dbmlParam = searchParams.get(queryConfig.dbml.key);
 
   const [layout, setLayout] = useState({
     ...defaultLayout,
@@ -31,6 +34,15 @@ export default function LayoutContextProvider({ children }) {
     toolbar: queryConfig.hideToolbar.isActive(hideToolbarParam)
       ? false
       : defaultLayout.toolbar,
+    issues: queryConfig.hideIssues.isActive(hideIssuesParam)
+      ? false
+      : defaultLayout.issues,
+    readOnly: queryConfig.readonly.isActive(readonlyParam)
+      ? true
+      : defaultLayout.readOnly,
+    dbmlEditor: queryConfig.dbml.isActive(dbmlParam)
+      ? true
+      : defaultLayout.dbmlEditor,
   });
 
   const effectiveLayout = {
@@ -44,6 +56,15 @@ export default function LayoutContextProvider({ children }) {
     toolbar: queryConfig.hideToolbar.isForced(hideToolbarParam)
       ? false
       : layout.toolbar,
+    issues: queryConfig.hideIssues.isForced(hideIssuesParam)
+      ? false
+      : layout.issues,
+    readOnly: queryConfig.readonly.isForced(readonlyParam)
+      ? true
+      : layout.readOnly,
+    dbmlEditor: queryConfig.dbml.isForced(dbmlParam)
+      ? true
+      : layout.dbmlEditor,
   };
 
   return (

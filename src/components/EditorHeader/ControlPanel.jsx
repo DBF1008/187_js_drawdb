@@ -11,7 +11,7 @@ import {
   IconEdit,
   IconShareStroked,
 } from "@douyinfe/semi-icons";
-import { Link, useMatch, useParams } from "react-router-dom";
+import { Link, useMatch, useParams, useSearchParams } from "react-router-dom";
 import icon from "../../assets/icon_dark_64.png";
 import {
   Button,
@@ -84,6 +84,7 @@ import { exportSavedData } from "../../utils/exportSavedData";
 import { nanoid } from "nanoid";
 import { getTableHeight } from "../../utils/utils";
 import { deleteFromCache, STORAGE_KEY } from "../../utils/cache";
+import { queryConfig } from "../../utils/queryConfig";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DateTime } from "luxon";
 import ConfigureCustomTypes from "./ConfigureCustomTypes";
@@ -117,6 +118,11 @@ export default function ControlPanel({
   const [importFrom, setImportFrom] = useState(IMPORT_FROM.JSON);
   const { saveState, setSaveState } = useSaveState();
   const { layout, setLayout } = useLayout();
+  const [searchParams] = useSearchParams();
+  const hideIssuesParam = searchParams.get(queryConfig.hideIssues.key);
+  const dbmlParam = searchParams.get(queryConfig.dbml.key);
+  const issuesForced = queryConfig.hideIssues.isForced(hideIssuesParam);
+  const dbmlForced = queryConfig.dbml.isForced(dbmlParam);
   const { settings, setSettings } = useSettings();
   const {
     relationships,
@@ -764,6 +770,7 @@ export default function ControlPanel({
     del();
   };
   const toggleDBMLEditor = () => {
+    if (dbmlForced) return;
     setLayout((prev) => ({ ...prev, dbmlEditor: !prev.dbmlEditor }));
   };
   const save = async () => {
@@ -1383,8 +1390,10 @@ export default function ControlPanel({
         ) : (
           <i className="bi bi-toggle-off" />
         ),
-        function: () =>
-          setLayout((prev) => ({ ...prev, issues: !prev.issues })),
+        function: () => {
+          if (issuesForced) return;
+          setLayout((prev) => ({ ...prev, issues: !prev.issues }));
+        },
       },
       dbml_view: {
         state: layout.dbmlEditor ? (
