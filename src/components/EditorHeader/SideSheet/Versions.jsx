@@ -1,8 +1,16 @@
 import { useCallback, useContext, useEffect, useState, useMemo } from "react";
 import { IdContext } from "../../Workspace";
 import { useTranslation } from "react-i18next";
-import { Button, Spin, Steps, Tag, Toast, Tooltip } from "@douyinfe/semi-ui";
-import { IconPlus } from "@douyinfe/semi-icons";
+import {
+  Button,
+  Checkbox,
+  Dropdown,
+  Spin,
+  Steps,
+  Tag,
+  Toast,
+} from "@douyinfe/semi-ui";
+import { IconPlus, IconMore } from "@douyinfe/semi-icons";
 import {
   create,
   getCommitsWithFile,
@@ -22,10 +30,11 @@ import {
   useTransform,
   useTypes,
 } from "../../../hooks";
+import useNavigateWithParams from "../../../hooks/useNavigateWithParams";
 import { databases } from "../../../data/databases";
 import { loadCache, saveCache } from "../../../utils/cache";
+import { createDiagramBranch } from "../../../utils/createBranch";
 import Migration from "./Migration";
-import { DB } from "../../../data/constants";
 
 const LIMIT = 10;
 
@@ -40,14 +49,15 @@ export default function Versions({ open, title, setTitle }) {
   const { enums, setEnums } = useEnums();
   const { transform } = useTransform();
   const { t, i18n } = useTranslation();
+  const navigate = useNavigateWithParams();
   const [isLoading, setIsLoading] = useState(false);
   const [versions, setVersions] = useState([]);
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [loadingVersion, setLoadingVersion] = useState(null);
-  const [selectedVersion, setSelectedVersion] = useState(null);
-  const [versionToCompareTo, setVersionToCompareTo] = useState(null);
+  const [compareSelection, setCompareSelection] = useState([]);
+  const [migrationPair, setMigrationPair] = useState(null);
 
   const cacheRef = useMemo(() => loadCache(), []);
 
@@ -227,34 +237,98 @@ export default function Versions({ open, title, setTitle }) {
     }
   };
 
-  const getVersionToCompareTo = useCallback(async () => {
-    if (!selectedVersion) return null;
+  // Resolve the predecessor (chronologically older) of a given version. Returns
+  // its sha, or null when `sha` is the oldest version (→ full CREATE migration).
+  // Keeps the edge-case fetch for when the target is the last loaded item and
+  // more history is available on the server.
+  const resolvePreviousVersion = useCallback(
+    async (sha) => {
+      const currentIndex = versions.findIndex((v) => v.version === sha);
+      if (currentIndex === -1) return null;
 
-    const currentIndex = versions.findIndex(
-      (v) => v.version === selectedVersion,
-    );
+      if (currentIndex === versions.length - 1 && hasMore) {
+        const res = await getCommitsWithFile(
+          gistId,
+          VERSION_FILENAME,
+          1,
+          cursor,
+        );
+        const prev = res.data.length ? res.data[0].version : null;
+        if (prev === sha) return null;
+        return prev;
+      }
 
-    if (currentIndex === -1) return null;
+      return versions[currentIndex + 1]?.version ?? null;
+    },
+    [versions, gistId, cursor, hasMore],
+  );
 
-    if (currentIndex === versions.length - 1 && hasMore) {
-      const res = await getCommitsWithFile(gistId, VERSION_FILENAME, 1, cursor);
-      const version = res.data.length ? res.data[0].version : "null";
+  // Selection order, max 2. Selecting a 3rd drops the oldest selection.
+  const toggleCompare = useCallback((sha) => {
+    setCompareSelection((prev) => {
+      if (prev.includes(sha)) return prev.filter((s) => s !== sha);
+      const next = [...prev, sha];
+      if (next.length > 2) next.shift();
+      return next;
+    });
+  }, []);
 
-      if (version === selectedVersion) return null;
+  // Order the two selected versions chronologically: in `versions` a lower
+  // index is newer, so the higher-index sha is the base (from) and the
+  // lower-index sha is the target (to).
+  const orderedCompare = useMemo(() => {
+    if (compareSelection.length < 2) return null;
+    const [a, b] = compareSelection;
+    const ia = versions.findIndex((v) => v.version === a);
+    const ib = versions.findIndex((v) => v.version === b);
+    const from = ia > ib ? a : b;
+    const to = ia > ib ? b : a;
+    return { from, to };
+  }, [compareSelection, versions]);
 
-      return version;
-    } else {
-      return versions[currentIndex + 1]?.version || "null";
-    }
-  }, [selectedVersion, versions, gistId, cursor, hasMore]);
+  const openCompareSelection = () => {
+    if (!orderedCompare) return;
+    setMigrationPair(orderedCompare);
+  };
 
-  useEffect(() => {
-    const getVersionToCompare = async () => {
-      const versionToCompare = await getVersionToCompareTo();
-      setVersionToCompareTo(versionToCompare);
-    };
-    getVersionToCompare();
-  }, [selectedVersion, getVersionToCompareTo]);
+  const openCompareWithPrevious = useCallback(
+    async (sha) => {
+      const prev = await resolvePreviousVersion(sha);
+      setMigrationPair({ from: prev, to: sha });
+    },
+    [resolvePreviousVersion],
+  );
+
+  // Fork a historical version into a brand-new editable diagram. The new
+  // diagram starts its own version history and records provenance, leaving the
+  // original diagram and its history untouched.
+  const restoreVersionAsBranch = useCallback(
+    async (sha) => {
+      try {
+        setLoadingVersion(sha);
+        const res = await getVersion(gistId, sha);
+        const file = res.data.files[VERSION_FILENAME];
+        if (!file) {
+          Toast.error(t("failed_to_load_diagram"));
+          return;
+        }
+        const parsed = JSON.parse(file.content);
+        const newId = await createDiagramBranch(parsed, {
+          loadedFromGistId: gistId,
+          nameSuffix: " (restored)",
+        });
+        setVersion(null);
+        setLayout((prev) => ({ ...prev, readOnly: false }));
+        Toast.success(t("restore_as_new_success"));
+        navigate(`/editor/diagrams/${newId}`);
+      } catch (e) {
+        Toast.error(t("failed_to_load_diagram"));
+      } finally {
+        setLoadingVersion(null);
+      }
+    },
+    [gistId, navigate, setVersion, setLayout, t],
+  );
 
   useEffect(() => {
     if (gistId && open) {
@@ -273,6 +347,39 @@ export default function Versions({ open, title, setTitle }) {
         >
           {t("record_version")}
         </Button>
+
+        {versions.length > 0 && (
+          <div className="flex items-center justify-between gap-2 mt-2 text-xs">
+            <div className="opacity-70 truncate">
+              {orderedCompare ? (
+                <span className="font-mono">
+                  {orderedCompare.from.substring(0, 7)} →{" "}
+                  {orderedCompare.to.substring(0, 7)}
+                </span>
+              ) : (
+                t("select_two_versions")
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                size="small"
+                disabled={!orderedCompare}
+                onClick={openCompareSelection}
+              >
+                {t("compare_versions")}
+              </Button>
+              {compareSelection.length > 0 && (
+                <Button
+                  size="small"
+                  theme="borderless"
+                  onClick={() => setCompareSelection([])}
+                >
+                  {t("clear_selection")}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {(!gistId || !versions.length) && !isLoading && (
@@ -287,37 +394,47 @@ export default function Versions({ open, title, setTitle }) {
                 onClick={() => loadVersion(r.version)}
                 className="group hover-1 first:!pt-2"
                 title={
-                  <div className="flex justify-between items-center w-full">
-                    <Tag>{r.version.substring(0, 7)}</Tag>
-                    {database === DB.GENERIC ? (
-                      <Tooltip content={t("migration_not_supported_generic")}>
-                        <Button
-                          size="small"
-                          theme="borderless"
-                          className="!text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedVersion(r.version);
-                          }}
-                          disabled={database === DB.GENERIC}
-                        >
-                          {t("generate_migration")}
-                        </Button>
-                      </Tooltip>
-                    ) : (
+                  <div className="flex justify-between items-center w-full gap-2">
+                    <div
+                      className="flex items-center gap-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={compareSelection.includes(r.version)}
+                        onChange={() => toggleCompare(r.version)}
+                      />
+                      <Tag>{r.version.substring(0, 7)}</Tag>
+                    </div>
+                    <Dropdown
+                      trigger="click"
+                      position="bottomRight"
+                      render={
+                        <Dropdown.Menu>
+                          <Dropdown.Item
+                            onClick={() => loadVersion(r.version)}
+                          >
+                            {t("view_this_version")}
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            onClick={() => openCompareWithPrevious(r.version)}
+                          >
+                            {t("compare_with_previous")}
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            onClick={() => restoreVersionAsBranch(r.version)}
+                          >
+                            {t("restore_as_new")}
+                          </Dropdown.Item>
+                        </Dropdown.Menu>
+                      }
+                    >
                       <Button
                         size="small"
                         theme="borderless"
-                        className="!text-xs"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedVersion(r.version);
-                        }}
-                        disabled={database === DB.GENERIC}
-                      >
-                        {t("generate_migration")}
-                      </Button>
-                    )}
+                        icon={<IconMore />}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </Dropdown>
                   </div>
                 }
                 description={`${t("committed_at")} ${DateTime.fromISO(
@@ -349,12 +466,15 @@ export default function Versions({ open, title, setTitle }) {
         </div>
       )}
 
-      <Migration
-        gistId={gistId}
-        selectedVersion={selectedVersion}
-        versionToCompareTo={versionToCompareTo || ""}
-        setSelectedVersion={setSelectedVersion}
-      />
+      {migrationPair && (
+        <Migration
+          gistId={gistId}
+          from={migrationPair.from}
+          to={migrationPair.to}
+          database={database}
+          onClose={() => setMigrationPair(null)}
+        />
+      )}
     </div>
   );
 }

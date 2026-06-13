@@ -1,28 +1,65 @@
-import { useCallback, useState } from "react";
-import { Tabs, TabPane, Modal, Input, Tag, Spin } from "@douyinfe/semi-ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Tabs, TabPane, Modal, Input, Tag, Spin, Collapse } from "@douyinfe/semi-ui";
 import { DiffEditor } from "@monaco-editor/react";
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings } from "../../../hooks";
 import { compare, VERSION_FILENAME } from "../../../api/gists";
 import { deepDiff } from "../../../utils/diff";
+import { summarizeDiff } from "../../../utils/migrations/diffSummary";
 import { DateTime } from "luxon";
 import CodeEditor from "../../CodeEditor";
 import { generateMigrationSQL } from "../../../utils/migrations/diffToSQL";
 import * as JSZip from "jszip";
 import { saveAs } from "file-saver";
 
-export default function Migration({
-  gistId,
-  selectedVersion,
-  versionToCompareTo,
-  setSelectedVersion,
-}) {
+const SECTION_KEYS = [
+  "tables",
+  "fields",
+  "indices",
+  "relationships",
+  "types",
+  "enums",
+];
+
+function itemLabel(item) {
+  if (typeof item === "string") return item;
+  const base = item.table ? `${item.table}.${item.name}` : item.name;
+  if (item.changes?.length) return `${base} · ${item.changes.join(", ")}`;
+  return base;
+}
+
+function ChangeRow({ label, color, items }) {
+  if (!items.length) return null;
+  return (
+    <div className="mb-2 last:mb-0">
+      <div className="text-xs font-semibold opacity-60 mb-1">{label}</div>
+      <div className="flex flex-wrap gap-1">
+        {items.map((it, i) => (
+          <Tag key={i} color={color} size="small">
+            {itemLabel(it)}
+          </Tag>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Loader({ label }) {
+  return (
+    <div className="text-blue-500 flex flex-col gap-2 justify-center items-center h-[24rem]">
+      <Spin size="middle" />
+      <div>{label}</div>
+    </div>
+  );
+}
+
+export default function Migration({ gistId, from, to, database, onClose }) {
   const { t } = useTranslation();
   const { settings } = useSettings();
   const [loading, setLoading] = useState(false);
-  const [contentA, setContentA] = useState("");
-  const [contentB, setContentB] = useState("");
+  const [contentA, setContentA] = useState(""); // newer (to)
+  const [contentB, setContentB] = useState(""); // older (from)
+  const [summary, setSummary] = useState(null);
   const [filename, setFilename] = useState(
     `${DateTime.now().toFormat("yyyyMMddHHmmss")}-migration`,
   );
@@ -34,17 +71,20 @@ export default function Migration({
   const getDiff = useCallback(async () => {
     try {
       setLoading(true);
-      const diff = {};
       const { data } = await compare(
         gistId,
         VERSION_FILENAME,
-        selectedVersion,
-        versionToCompareTo,
+        to,
+        from || "null",
       );
-      setContentA(JSON.stringify(JSON.parse(data.contentA), null, 2));
-      setContentB(
-        data.contentB ? JSON.stringify(JSON.parse(data.contentB), null, 2) : "",
-      );
+
+      const diagramTo = data.contentA ? JSON.parse(data.contentA) : {};
+      const diagramFrom = data.contentB ? JSON.parse(data.contentB) : {};
+
+      setContentA(JSON.stringify(diagramTo, null, 2));
+      setContentB(data.contentB ? JSON.stringify(diagramFrom, null, 2) : "");
+
+      const effectiveDb = diagramTo.database ?? diagramFrom.database ?? database;
 
       const keysToIgnore = [
         "x",
@@ -60,27 +100,28 @@ export default function Migration({
         "database",
       ];
 
-      deepDiff(
-        data.contentB ? JSON.parse(data.contentB) : {},
-        JSON.parse(data.contentA),
-        diff,
-        keysToIgnore,
-      );
-      const diagramA = data.contentA ? JSON.parse(data.contentA) : {};
-      const diagramB = data.contentB ? JSON.parse(data.contentB) : {};
-      const database = diagramA.database;
+      const diff = {};
+      deepDiff(diagramFrom, diagramTo, diff, keysToIgnore);
+
       setMigrationSQL(
-        generateMigrationSQL(diff, database, { from: diagramB, to: diagramA }),
+        generateMigrationSQL(diff, effectiveDb, {
+          from: diagramFrom,
+          to: diagramTo,
+        }),
       );
+      setSummary(summarizeDiff(diagramFrom, diagramTo, effectiveDb));
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
-  }, [gistId, selectedVersion, versionToCompareTo]);
+  }, [gistId, from, to, database]);
 
   const handleConfirm = () => {
-    if (!migrationSQL?.up) return;
+    if (!migrationSQL?.up) {
+      onClose();
+      return;
+    }
 
     const JSZipConstructor = JSZip.default || JSZip;
     const zip = new JSZipConstructor();
@@ -92,41 +133,94 @@ export default function Migration({
       saveAs(content, `${filename}.zip`);
     });
 
-    setSelectedVersion(null);
+    onClose();
   };
 
   useEffect(() => {
-    if (versionToCompareTo === "") {
-      setLoading(true);
-      return;
-    }
-    if (!gistId || !selectedVersion) return;
+    if (!gistId || !to) return;
     getDiff();
-  }, [getDiff, gistId, selectedVersion, versionToCompareTo]);
+  }, [getDiff, gistId, to]);
 
-  if (!selectedVersion) return null;
+  const activeSummaryKeys = useMemo(() => {
+    if (!summary) return [];
+    return SECTION_KEYS.filter((k) => summary[k] && summary.counts[k] > 0);
+  }, [summary]);
+
+  if (!to) return null;
 
   return (
     <Modal
       centered
       size="medium"
       title={
-        <div className="flex items-center gap-2">
-          {t("migrations")} <Tag color="blue">Beta</Tag>
+        <div>
+          <div className="flex items-center gap-2">
+            {t("migrations")} <Tag color="blue">Beta</Tag>
+          </div>
+          <div className="text-xs font-normal opacity-60 mt-1">
+            {t("comparing_versions")} {from ? from.substring(0, 7) : "∅"} →{" "}
+            {to.substring(0, 7)}
+          </div>
         </div>
       }
-      visible={!!selectedVersion}
-      onCancel={() => setSelectedVersion(null)}
+      visible={!!to}
+      onCancel={onClose}
       onOk={handleConfirm}
     >
-      <Tabs lazyRender keepDOM={false} className="h-[26rem] -mt-3">
-        <TabPane tab={t("scripts")} itemKey="1">
-          {loading && (
-            <div className="text-blue-500 flex flex-col gap-2 justify-center items-center h-[24rem]">
-              <Spin size="middle" />
-              <div>{t("loading")}</div>
+      <Tabs
+        lazyRender
+        keepDOM={false}
+        className="h-[26rem] -mt-3"
+        defaultActiveKey="summary"
+      >
+        <TabPane tab={t("summary")} itemKey="summary">
+          {loading && <Loader label={t("loading")} />}
+
+          {!loading && summary && summary.hasChanges && (
+            <div className="h-[24rem] overflow-y-auto pr-1">
+              <Collapse defaultActiveKey={activeSummaryKeys}>
+                {SECTION_KEYS.map((key) => {
+                  const section = summary[key];
+                  if (!section) return null;
+                  const count = summary.counts[key];
+                  if (!count) return null;
+                  return (
+                    <Collapse.Panel
+                      key={key}
+                      itemKey={key}
+                      header={`${t(key)} (${count})`}
+                    >
+                      <ChangeRow
+                        label={t("added")}
+                        color="green"
+                        items={section.added}
+                      />
+                      <ChangeRow
+                        label={t("removed")}
+                        color="red"
+                        items={section.removed}
+                      />
+                      <ChangeRow
+                        label={t("modified")}
+                        color="amber"
+                        items={section.modified}
+                      />
+                    </Collapse.Panel>
+                  );
+                })}
+              </Collapse>
             </div>
           )}
+
+          {!loading && summary && !summary.hasChanges && (
+            <div className="text-center opacity-60 mt-44">
+              {t("no_changes_detected")}
+            </div>
+          )}
+        </TabPane>
+
+        <TabPane tab={t("scripts")} itemKey="scripts">
+          {loading && <Loader label={t("loading")} />}
 
           {!loading && migrationSQL?.up && (
             <>
@@ -155,7 +249,7 @@ export default function Migration({
           )}
         </TabPane>
 
-        <TabPane tab={t("json_diff")} itemKey="2">
+        <TabPane tab={t("json_diff")} itemKey="json_diff">
           {!loading && (
             <DiffEditor
               original={contentB}
@@ -166,12 +260,7 @@ export default function Migration({
               language="json"
             />
           )}
-          {loading && (
-            <div className="text-blue-500 flex flex-col gap-2 justify-center items-center h-[24rem]">
-              <Spin size="middle" />
-              <div>{t("loading")}</div>
-            </div>
-          )}
+          {loading && <Loader label={t("loading")} />}
         </TabPane>
       </Tabs>
       <div className="text-sm font-semibold mt-2">{t("filename")}:</div>

@@ -41,6 +41,7 @@ import {
 import { get, SHARE_FILENAME } from "../api/gists";
 import { nanoid } from "nanoid";
 import { mergeCustomTypes } from "../utils/customTypes";
+import { createDiagramBranch } from "../utils/createBranch";
 
 export const IdContext = createContext({
   gistId: "",
@@ -658,10 +659,29 @@ export default function WorkSpace({ forcedDiagramId } = {}) {
         }
         okText={t("continue")}
         cancelText={t("cancel")}
-        onOk={() => {
-          setLayout((prev) => ({ ...prev, readOnly: false }));
-          setShowRestoreModal(false);
-          setVersion(null);
+        onOk={async () => {
+          try {
+            const newId = await createDiagramBranch(
+              {
+                title,
+                database,
+                tables,
+                relationships,
+                notes,
+                subjectAreas: areas,
+                transform,
+                types,
+                enums,
+              },
+              { loadedFromGistId: gistId, nameSuffix: " (restored)" },
+            );
+            setShowRestoreModal(false);
+            setVersion(null);
+            setLayout((prev) => ({ ...prev, readOnly: false }));
+            navigate(`/editor/diagrams/${newId}`);
+          } catch (e) {
+            console.error(e);
+          }
         }}
       >
         {t("restore_warning")}
