@@ -97,6 +97,7 @@ const en = {
     add_note: "Add note",
     add_type: "Add type",
     tables: "Tables",
+    fields: "Fields",
     relationships: "Relationships",
     subject_areas: "Subject areas",
     notes: "Notes",

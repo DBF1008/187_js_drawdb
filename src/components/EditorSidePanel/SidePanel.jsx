@@ -25,6 +25,7 @@ import EnumsTab from "./EnumsTab/EnumsTab";
 import { isRtl } from "../../i18n/utils/rtl";
 import i18n from "../../i18n/i18n";
 import DBMLEditor from "./DBMLEditor";
+import GlobalSearchBar from "./GlobalSearchBar";
 
 export default function SidePanel({ width, resize, setResize }) {
   const { layout, setLayout } = useLayout();
@@ -99,6 +100,11 @@ export default function SidePanel({ width, resize, setResize }) {
         className={`flex flex-col h-full relative ${layout.dbmlEditor ? "" : "pt-2"}`}
         style={{ width: `${width}px` }}
       >
+        {!layout.dbmlEditor && (
+          <div className="px-2 pb-2">
+            <GlobalSearchBar />
+          </div>
+        )}
         <div className="h-full flex-1 overflow-y-auto">
           {layout.dbmlEditor ? (
             <DBMLEditor />
